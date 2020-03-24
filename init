@@ -34,14 +34,14 @@ esac
 done
 
 # use provided namespace:nsid with namespace_helpers to populate NS and NSID vars
-echo "namespace arg provided is $NS_PLUS_NSID" 
+echo "namespace arg provided is $NS_PLUS_NSID"
 NS=$(namespace_get_name $NS_PLUS_NSID)
 NSID=$(namespace_get_id $NS_PLUS_NSID)
-echo "namespace is $NS, nsid is $NSID" 
+echo "namespace is $NS, nsid is $NSID"
 
 # if the desired namespace isn't found, create it
 if [ ! -e "/var/run/netns/$NS" ]; then
-  echo "Namespace $NS not found, creating it." 
+  echo "Namespace $NS not found, creating it."
   ip netns add $NS
   ip netns set $NS $NSID
 fi
@@ -49,7 +49,7 @@ fi
 # set up KNI if it exists in the default namespace
 if [ -d "/sys/devices/virtual/net/$KNI_NAME" ]; then
   echo "$KNI_NAME found in default namespace."
-  echo "Moving $KNI_NAME to $NS: net=$IPADDR/$PREFIX gw=$GATEWAY." 
+  echo "Moving $KNI_NAME to $NS: net=$IPADDR/$PREFIX gw=$GATEWAY."
   ip link set $KNI_NAME netns $NS
   ip netns exec $NS ip address add $IPADDR/$PREFIX dev $KNI_NAME
   ip netns exec $NS ip link set $KNI_NAME up
@@ -66,3 +66,5 @@ ip netns exec $NS wg setconf wg0 /var/lib/128technology/plugins/wg/server.conf
 
 # bring up the wireguard interface
 ip netns exec $NS ip link set up dev wg0
+# enable forwarding in the namespace
+ip netns exec $NS sysctl -w -q net.ipv4.ip_forward=1
