@@ -183,7 +183,7 @@ AllowedIPs = 10.10.128.3/32
 PublicKey = <my-mobile public key string>
 ```
 #### 4- Set up remote peer configs
-Set up the laptop peer `/var/lib/128technology/plugins/wg/my-laptop.conf` file with settings for it's interface, and the 128T peer.
+Set up the laptop peer `/var/lib/128technology/plugins/wg/my-laptop.conf` file with settings for it's interface, and the 128T peer. Note the `AllowedIPs` setting corresponds with the private service address we want to send to the 128T Wireguard peer. You can customize this setting for your environment, to control what the remote device sends to the 128T peer, and what it sends directly out it's default route.
 ```
 [Interface]
 Address = 10.10.128.2/32
@@ -195,7 +195,7 @@ PublicKey = <128T public key string>
 AllowedIPs = 172.16.128.0/24
 Endpoint = 128.128.128.128:12800
 ```
-Set up the mobile peer `/var/lib/128technology/plugins/wg/my-mobile.conf` file with settings for it's interface, and the 128T peer.
+Set up the mobile peer `/var/lib/128technology/plugins/wg/my-mobile.conf` file with settings for it's interface, and the 128T peer. Note the `AllowedIPs` setting corresponds with the private service address we want to send to the 128T Wireguard peer. You can customize this setting for your environment, to control what the remote device sends to the 128T peer, and what it sends directly out it's default route.
 ```
 [Interface]
 Address = 10.10.128.3/32
