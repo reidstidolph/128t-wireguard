@@ -1,0 +1,68 @@
+#!/usr/bin/env bash
+
+# import common functions related to namespace operations
+source /etc/128technology/plugins/network-scripts/common/namespace_helpers
+
+# read arguments provided to script
+for i in "$@"
+do
+case $i in
+  --kni-interface=*)
+  KNI_NAME="${i#*=}"
+  shift
+  ;;
+  --kni-ip=*)
+  IPADDR="${i#*=}"
+  shift
+  ;;
+  --kni-prefix-length=*)
+  PREFIX="${i#*=}"
+  shift
+  ;;
+  --kni-gateway=*)
+  GATEWAY="${i#*=}"
+  shift
+  ;;
+  --namespace=*)
+  NS_PLUS_NSID="${i#*=}"
+  shift
+  ;;
+  *)
+  echo "Got unknown arg $i"
+  ;;
+esac
+done
+
+# use provided namespace:nsid with namespace_helpers to populate NS and NSID vars
+echo "namespace arg provided is $NS_PLUS_NSID" 
+NS=$(namespace_get_name $NS_PLUS_NSID)
+NSID=$(namespace_get_id $NS_PLUS_NSID)
+echo "namespace is $NS, nsid is $NSID" 
+
+# if the desired namespace isn't found, create it
+if [ ! -e "/var/run/netns/$NS" ]; then
+  echo "Namespace $NS not found, creating it." 
+  ip netns add $NS
+  ip netns set $NS $NSID
+fi
+
+# set up KNI if it exists in the default namespace
+if [ -d "/sys/devices/virtual/net/$KNI_NAME" ]; then
+  echo "$KNI_NAME found in default namespace."
+  echo "Moving $KNI_NAME to $NS: net=$IPADDR/$PREFIX gw=$GATEWAY." 
+  ip link set $KNI_NAME netns $NS
+  ip netns exec $NS ip address add $IPADDR/$PREFIX dev $KNI_NAME
+  ip netns exec $NS ip link set $KNI_NAME up
+  ip netns exec $NS ip route add default via $GATEWAY dev $KNI_NAME
+fi
+
+# set up the Wireguard interface
+echo "Adding wireguard interface."
+ip netns exec $NS ip link add wg0 type wireguard
+ip netns exec $NS ip addr add 10.10.128.1/24 dev wg0
+ip netns exec $NS wg setconf wg0 /var/lib/128technology/plugins/wg/server.conf
+
+# enable forwarding in the NS
+
+# bring up the wireguard interface
+ip netns exec $NS ip link set up dev wg0

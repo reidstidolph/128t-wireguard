@@ -1,0 +1,43 @@
+#!/usr/bin/env bash
+
+# import common functions related to namespace operations
+source /etc/128technology/plugins/network-scripts/common/namespace_helpers
+
+# read arguments provided to script
+for i in "$@"
+do
+case $i in
+  --kni-interface=*)
+  KNI_NAME="${i#*=}"
+  shift
+  ;;
+  --kni-ip=*)
+  IPADDR="${i#*=}"
+  shift
+  ;;
+  --kni-prefix-length=*)
+  PREFIX="${i#*=}"
+  shift
+  ;;
+  --kni-gateway=*)
+  GATEWAY="${i#*=}"
+  shift
+  ;;
+  --namespace=*)
+  NS_PLUS_NSID="${i#*=}"
+  shift
+  ;;
+  *)
+  echo "Got unknown arg $i"
+  ;;
+esac
+done
+
+# use provided namespace:nsid with namespace_helpers to populate NS and NSID vars
+echo "namespace arg provided is $NS_PLUS_NSID"
+NS=$(namespace_get_name $NS_PLUS_NSID)
+
+# clean up interface and namespace
+ip netns exec $NS ip link set wg0 down
+ip netns exec $NS ip link delete wg0 
+ip netns delete $NS
