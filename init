@@ -60,7 +60,7 @@ fi
 echo "Adding wireguard interface."
 ip netns exec $NS ip link add wg0 type wireguard
 ip netns exec $NS ip addr add 10.10.128.1/24 dev wg0
-ip netns exec $NS wg setconf wg0 /var/lib/128technology/plugins/wg/server.conf
+ip netns exec $NS wg setconf wg0 /var/lib/128technology/plugins/wg/128t.conf
 
 # enable forwarding in the NS
 

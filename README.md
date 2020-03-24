@@ -106,6 +106,8 @@ device-interface  wg-dev
     exit
 exit
 ```
+#### 5- Add a route
+Route the Wireguard service in to the KNI.
 ```
 service-route                       static-Wireguard
     name          static-Wireguard
@@ -119,7 +121,7 @@ service-route                       static-Wireguard
 exit
 ```
 
-#### 5- Set up namespace
+#### 6- Set up namespace
 Someone deploying this would most likely want to use the `init` script contained in this repo. However for completeness in showing how to do the setup manually, the following sets up the namespace and moves the KNI `wg-dev` interface to it.
 ```
 sudo ip netns add wireguard
@@ -218,3 +220,11 @@ sudo ip netns exec wireguard wg syncconf wg0 /var/lib/128technology/plugins/wg/1
 ```
 
 ## Remote Device Setup
+To set up the remote devices, copy the conf settings to the devices. For Android and iOS mobile devices, you can generate QR codes
+```
+sudo yum install qrencode
+sudo qrencode -t ansiutf8 < /var/lib/128technology/plugins/wg/my-mobile.conf
+```
+
+## Plugin Scripts
+To automate the steps for setting up the namespace and interfaces, this repo contains a `init` and `shutdown` plugin script. Copy them to `/etc/128technology/plugins/network-scripts/host/wg-dev/` on your 128T host, and the interfaces will be automatically added and removed as 128T is started/stopped.
