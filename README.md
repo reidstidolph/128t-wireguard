@@ -10,7 +10,9 @@ This walks step by step through the setup of the Wireguard peer on a 128T router
 
 ### Installation on the 128T host
 
-Wireguard offers a RPM package for CentOS, however it has a dependency conflict with 128T (`elfutils`). You can easily compile it from source using some slight modifications of this procedure: https://www.wireguard.com/compilation/
+Wireguard offers a RPM package for CentOS, and you can attempt to install it using instructions here: https://www.wireguard.com/install/.
+
+However you may run into a dependency conflict with 128T (`elfutils`). You can easily compile it from source using some slight modifications of this procedure: https://www.wireguard.com/compilation/
 
 #### 1- Install build dependencies
 ```
