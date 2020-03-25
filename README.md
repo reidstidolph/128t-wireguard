@@ -15,11 +15,13 @@ Wireguard offers a RPM package for CentOS, and you can attempt to install it usi
 However you may run into a dependency conflict with 128T (`elfutils`). You can easily compile it from source using some slight modifications of this procedure: https://www.wireguard.com/compilation/
 
 #### 1- Install build dependencies
+Install build dependencies on a target 128T host.
 ```
 sudo yum install --enablerepo=updates kernel-devel-$(uname -r) pkgconfig "@Development Tools"
 ```
 
 #### 2- Grab the code
+Use `git` to download the code.
 ```
 git clone https://git.zx2c4.com/wireguard-linux-compat
 git clone https://git.zx2c4.com/wireguard-tools
@@ -27,13 +29,14 @@ git clone https://git.zx2c4.com/wireguard-tools
 
 #### 3- Compile and install the module
 ```
-$ make -C wireguard-linux-compat/src -j$(nproc)
-$ sudo make -C wireguard-linux-compat/src install
+make -C wireguard-linux-compat/src -j$(nproc)
+sudo make -C wireguard-linux-compat/src install
 ```
+
 #### 4- Compile and install the `wg` tool
 ```
-$ make -C wireguard-tools/src -j$(nproc)
-$ sudo make -C wireguard-tools/src install
+make -C wireguard-tools/src -j$(nproc)
+sudo make -C wireguard-tools/src install
 ```
 
 ### 128T configuration
