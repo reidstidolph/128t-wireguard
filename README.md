@@ -74,7 +74,7 @@ exit
 ```
 
 #### 3- Access to Private Services
-Give `Work-From-Home` access to the required private services (this assume the private services already have routes configured).
+Give `Work-From-Home` access to the required private services (this assumes the private services already have routes configured).
 ```
 service            Corp-Net
     name                  Corp-Net
@@ -225,7 +225,7 @@ sudo ip netns exec wireguard wg syncconf wg0 /var/lib/128technology/plugins/wg/1
 ```
 
 ## Remote Device Setup
-To set up the remote devices, copy the conf settings to the devices. For Android and iOS mobile devices, you can generate QR codes
+To set up the remote devices, copy the conf settings to the devices. For Android and iOS mobile devices, you can generate QR codes.
 ```
 sudo yum install qrencode
 sudo qrencode -t ansiutf8 < /var/lib/128technology/plugins/wg/my-mobile.conf
