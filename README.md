@@ -159,14 +159,15 @@ sudo touch my-mobile.conf && sudo touch my-mobile.priv && sudo touch my-mobile.p
 sudo chmod 600 /var/lib/128technology/plugins/wg/*
 ```
 Generate a new private/private key for each peer.
-*Note*: best security practice would be to have each device generate keys on their own, and only transmit the public key between peers. This does not follow this best practice.
+
+*Note*: best security practice would be to have each device generate keys on their own, and only transmit the public key between peers. This does not follow this best practice. These must be run as `root`, and are for the purpose of demonstration.
 ```
-sudo wg genkey > /var/lib/128technology/plugins/wg/128t.priv
-sudo wg pubkey < /var/lib/128technology/plugins/wg/128t.priv > /var/lib/128technology/plugins/wg/128t.pub
-sudo wg genkey > /var/lib/128technology/plugins/wg/my-laptop.priv
-sudo wg pubkey < /var/lib/128technology/plugins/wg/my-laptop.priv > /var/lib/128technology/plugins/wg/my-laptop.pub
-sudo wg genkey > /var/lib/128technology/plugins/wg/my-mobile.priv
-sudo wg pubkey < /var/lib/128technology/plugins/wg/my-mobile.priv > /var/lib/128technology/plugins/wg/my-mobile.pub
+wg genkey > /var/lib/128technology/plugins/wg/128t.priv
+wg pubkey < /var/lib/128technology/plugins/wg/128t.priv > /var/lib/128technology/plugins/wg/128t.pub
+wg genkey > /var/lib/128technology/plugins/wg/my-laptop.priv
+wg pubkey < /var/lib/128technology/plugins/wg/my-laptop.priv > /var/lib/128technology/plugins/wg/my-laptop.pub
+wg genkey > /var/lib/128technology/plugins/wg/my-mobile.priv
+wg pubkey < /var/lib/128technology/plugins/wg/my-mobile.priv > /var/lib/128technology/plugins/wg/my-mobile.pub
 ```
 #### 3- Set up 128T Wireguard peer config
 Set up the 128T peer `/var/lib/128technology/plugins/wg/128t.conf` file with settings for it's interface, and the peers.
