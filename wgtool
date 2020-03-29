@@ -1,0 +1,464 @@
+#!/usr/bin/env node
+'use strict'
+
+const fs = require('fs')
+const dataFile = `${__dirname}/.wgdata.json`
+const { spawn } = require('child_process')
+var wgData
+
+const ipTools = {
+  "ipRegex": /\b(?<octet1>25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])\.(?<octet2>25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])\.(?<octet3>25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])\.(?<octet4>25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\b/,
+  "prefixRegex": /\b(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])\.(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])\.(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\/([0-9]|[1-2][0-9]|3[0-2])\b/,
+  "ipIsValid": function(ipAddr){
+    return this.ipRegex.test(ipAddr)
+  },
+  "prefixIsValid": function(prefix){
+    return this.prefixRegex.test(prefix)
+  },
+  "getLastOctetNum": function(ipAddr){
+    let match = this.ipRegex.exec(ipAddr)
+    return parseInt(match.groups.octet4)
+  },
+  "getNextIp": function(){
+    let ipIndex = wgData.peerIndex
+    let match = this.ipRegex.exec(ipIndex)
+    let numberOfAssignedIps = Object.keys(wgData.peers).length
+
+    if (parseInt(match.groups.octet4)+numberOfAssignedIps < 255) {
+      return `${match.groups.octet1}.${match.groups.octet2}.${match.groups.octet3}.${parseInt(match.groups.octet4) + numberOfAssignedIps}`
+    } else {
+      console.log('out of ip addresses') // TODO: implement roll over
+      process.exit(1)
+    }
+  }
+}
+
+const wg = {
+
+  /**
+   * Generate a private key.
+   *
+   * @return {Promise} Promised results public key generation.
+   *
+  */
+  genPrivKey: function(){
+    return new Promise((resolve, reject)=>{
+      let output = ""
+      let wgKeyGen = spawn('/usr/bin/wg', ['genkey'])
+
+      wgKeyGen.stdout.on('data', (data) => {
+        output = data.toString().replace(/\n$/, '')
+      })
+
+      wgKeyGen.stderr.on('data', (data) => {
+        output = data.toString().replace(/\n$/, '')
+      })
+
+      wgKeyGen.on('close', (code) => {
+        if (code !== 0) {
+          reject(output)
+        } else {
+          resolve(output)
+        }
+      })
+    })
+  },
+
+  /**
+   * Generate a public key.
+   *
+   * @param {string} privkey - private key
+   * @return {Promise} Promised results public key generation.
+   *
+  */
+  genPubKey: function(privkey){
+    return new Promise((resolve, reject)=>{
+      let output = ""
+      let wgKeyGen = spawn('/usr/bin/wg', ['pubkey'])
+
+      wgKeyGen.stdin.write(privkey)
+      wgKeyGen.stdin.end()
+
+      wgKeyGen.stdout.on('data', (data) => {
+        output = data.toString().replace(/\n$/, '')
+      })
+
+      wgKeyGen.stderr.on('data', (data) => {
+        output = data.toString().replace(/\n$/, '')
+      })
+
+      wgKeyGen.on('close', (code) => {
+        if (code !== 0) {
+          reject(output)
+        } else {
+          resolve(output)
+        }
+      })
+    })
+  }
+}
+
+/**
+ * Initialize the tool.
+ *
+ * @param {object} indexPeer - initial peer
+ *
+*/
+
+async function initialize(indexPeer){
+
+  // see if input can be parsed as JSON
+  var peerInput
+  try {
+    peerInput = JSON.parse(indexPeer)
+  } catch (err) {
+    console.log('unable to parse input as JSON.')
+    console.log('expects \'{"ip":"10.10.128.1", "waypoint":"1.1.1.1", "networks": ["10.0.0.0/24"] }\'')
+    process.exit(1)
+  }
+  // validate properties
+  if (!peerInput.ip || !peerInput.waypoint || !Array.isArray(peerInput.networks)) {
+    console.log('required properties missing.')
+    console.log('expects \'{"ip":"10.10.128.1", "waypoint":"1.1.1.1", "networks": ["10.0.0.0/24"] }\'')
+    process.exit(1)
+  }
+  // validate ip
+  if (!ipTools.ipIsValid(peerInput.ip)) {
+    console.log(`invalid ip value '${peerInput.ip}'`)
+    process.exit(1)
+  }
+  // validate waypoint
+  if (!ipTools.ipIsValid(peerInput.waypoint)) {
+    console.log(`invalid waypoint value '${peerInput.waypoint}'`)
+    process.exit(1)
+  }
+  // validate prefixes
+  peerInput.networks.forEach((prefix)=>{
+    if (!ipTools.prefixIsValid(prefix)) {
+      console.log(`invalid prefix '${prefix}'`)
+      process.exit(1)
+    }
+  })
+
+  // inputs validated
+  wgData = {}
+  wgData.peerIndex = peerInput.ip
+  wgData.peers = {}
+
+  try {
+    wgData.peers[peerInput.ip] = await genPeer("gateway", peerInput.networks, peerInput.waypoint)
+    await writeDataFile(wgData)
+    // initialized
+    console.log('initialized.')
+    process.exit(0)
+  } catch (err) {
+    console.error(err)
+    process.exit(1)
+  }
+}
+
+/**
+ * encode data as QR code
+ *
+ * @param {string} input - input string to be encoded
+ * @return {Promise} Promised results of reading QR code data.
+ *
+*/
+function qrGen(input){
+  return new Promise((resolve, reject)=>{
+    let output = ""
+    let qrEncode = spawn('/usr/bin/qrencode', ['-t', 'ansiutf8'])
+
+    qrEncode.stdin.write(input)
+    qrEncode.stdin.end()
+
+    qrEncode.stdout.on('data', (data) => {
+      //process.stdout.write(data)
+      output = data
+    })
+
+    qrEncode.stderr.on('data', (data) => {
+      //process.stdout.write(data)
+      output = data
+    })
+
+    qrEncode.on('close', (code) => {
+      if (code !== 0) {
+        reject(output)
+      } else {
+        resolve(output)
+      }
+    })
+  })
+}
+
+/**
+ * Function generating a peer object.
+ *
+ * @param {string} name - friendly name of peer
+ * @param {array} networks - ip/prefixes for peer
+ * @param {string} waypoint - ip of peer waypoint
+ * @return {Promise} Promised results of generated peer object.
+ *
+*/
+
+function genPeer(name, networks, waypoint){
+  return new Promise((resolve, reject)=>{
+    async function genkeys(){
+      try {
+        let privkey = await wg.genPrivKey()
+        let pubkey = await wg.genPubKey(privkey)
+        let peer = {"name":name,"waypoint":waypoint,"networks":networks,"priv":privkey,"pub":pubkey}
+        resolve(peer)
+      } catch (err) {
+        reject(err)
+      }
+    }
+    genkeys()
+  })
+}
+
+/**
+ * Function for writing json object to file.
+ *
+ * @param {object} data - object to write to file
+ * @return {Promise} Promised results of reading the module file.
+ *
+*/
+function writeDataFile(data) {
+  return new Promise((resolve, reject) => {
+    fs.writeFile(dataFile, JSON.stringify(data, null, 2),  { mode: 0o600 }, (err) => {
+      if (err) {
+        // unable to write file
+        reject(err)
+      } else {
+        resolve()
+      }
+    })
+  })
+}
+
+/**
+ * Generate peer wireguard config
+ *
+ * @param {string} peerKey - IP address of peer, as key for lookup in wgData.peers
+ * @return {string} wireguard config string
+ *
+*/
+function peerToConf(peerKey){
+
+  // get peer from peers
+  let peer = wgData.peers[peerKey]
+
+  if (peer.waypoint === null) {
+
+    // spoke
+
+    let conf = `[Interface]
+# ${peer.name}
+Address = ${peerKey}/32
+PrivateKey = ${peer.priv}
+DNS = 1.1.1.1
+DNS = 8.8.8.8
+`
+    // find hub peers
+    for (var key in wgData.peers) {
+      let remotePeer = wgData.peers[key]
+      if (remotePeer.waypoint !== null) {
+        // got hub
+        // generate allowed IPs
+        let allowedIps = []
+
+        remotePeer.networks.forEach((prefix)=>{
+          allowedIps.push(`AllowedIPs = ${prefix}`)
+        })
+
+        conf+=`
+[Peer]
+# ${remotePeer.name}
+${allowedIps.join('\n')}
+PublicKey = ${remotePeer.pub}
+Endpoint = ${remotePeer.waypoint}:12800`
+
+      }
+    }
+    // return conf string
+    return conf
+  } else if (peer.waypoint) {
+
+    // hub
+
+    let conf = `[Interface]
+# ${peer.name}
+ListenPort = 12800
+PrivateKey = ${peer.priv}`
+
+    // find spoke peers
+    for (var key in wgData.peers) {
+      let remotePeer = wgData.peers[key]
+      if (remotePeer.waypoint === null) {
+        // got spoke
+        conf+=`
+
+[Peer]
+# ${remotePeer.name}
+AllowedIPs = ${key}/32
+PublicKey = ${remotePeer.pub}`
+      }
+    }
+    // return conf string
+    return conf
+  }
+}
+
+/**
+ * Get peer config
+ *
+ * @param {string} peerIdentifier - string containing IP address of peer
+ * @return {string} wireguard config string
+ *
+*/
+function getPeer(peerIdentifier) {
+
+  function searchByName(string){
+    for (var peerKey in wgData.peers) {
+      if (wgData.peers[peerKey].name === string ) {
+        return peerKey
+        break
+      }
+    }
+    return false
+  }
+
+  let nameLookup = searchByName(peerIdentifier)
+
+  if (wgData.peers[peerIdentifier]) {
+    return peerToConf(peerIdentifier)
+  } else if (nameLookup) {
+    return peerToConf(nameLookup)
+  } else {
+    console.log('peer not found')
+    process.exit(1)
+  }
+}
+
+/**
+ * Lookup peer in data object
+ *
+ * @param {string} peerIdentifier - string containing IP address of peer
+ * @return {Promise} Promised results of peer generation and add
+ *
+*/
+async function getPeerQr(peerIdentifier){
+  let foundPeerConf = getPeer(peerIdentifier)
+  let qr = await qrGen(foundPeerConf)
+  return qr
+}
+
+/**
+ * Add a new peer
+ *
+ * @param {object} peerInput - object container peer settings
+ * @return {string} wireguard config string
+ *
+*/
+async function addPeer(peerInput){
+  // see if input can be parsed as JSON
+  try {
+    peerInput = JSON.parse(peerInput)
+  } catch (err) {
+    console.log('unable to parse input as JSON.')
+    console.log('expects \'{"name":"foo"}\' for device peer.')
+    console.log('expects \'{"name":"foo", "waypoint":"1.1.1.1", "networks": ["10.0.0.0/24"]}\' for router peer.')
+    process.exit(1)
+  }
+  // validate name input
+  if (!peerInput.name) {
+    console.log('required properties missing.')
+    console.log('expects \'{"name":"foo"}\' for device peer.')
+    console.log('expects \'{"name":"foo", "waypoint":"1.1.1.1", "networks": ["10.0.0.0/24"]}\' for router peer.')
+    process.exit(1)
+  }
+  // if a waypoint is provided, make sure it is valid
+  if (peerInput.waypoint) {
+    // validate waypoint ip
+    if (!ipTools.ipIsValid(peerInput.waypoint)) {
+      console.log(`invalid waypoint value '${peerInput.waypoint}'`)
+      process.exit(1)
+    }
+    // validate required networks
+    if (!Array.isArray(peerInput.networks)) {
+      console.log('required properties missing.')
+      console.log('expects \'{"name":"foo", "waypoint":"1.1.1.1", "networks": ["10.0.0.0/24"]}\' for router peer.')
+      process.exit(1)
+    }
+    // validate prefixes
+    peerInput.networks.forEach((prefix)=>{
+      if (!ipTools.prefixIsValid(prefix)) {
+        console.log(`invalid prefix '${prefix}'`)
+        process.exit(1)
+      }
+    })
+  }
+
+  // input validated
+
+  let nextIp = ipTools.getNextIp()
+  console.log(nextIp)
+  if (!peerInput.networks || !peerInput.waypoint) {
+    peerInput.waypoint = null
+    peerInput.networks = [`${nextIp}/32`]
+  }
+  try {
+    wgData.peers[ipTools.getNextIp()] = await genPeer(peerInput.name, peerInput.networks, peerInput.waypoint)
+    await writeDataFile(wgData)
+    // initialized
+    console.log('added.')
+    process.exit(0)
+  } catch (err) {
+    console.error(err)
+    process.exit(1)
+  }
+}
+
+//begin
+
+// attempt data JSON import from file
+try {
+  wgData = require(dataFile)
+} catch (err) {
+  if (process.argv[2] === 'init') {
+    initialize(process.argv[3])
+  } else {
+    console.log('initialization required.')
+    process.exit(1)
+  }
+}
+
+switch (process.argv[2]) {
+
+  case "init":
+    initialize(process.argv[3])
+  break
+// retrieve a peer
+  case "getpeer":
+    console.log(getPeer(process.argv[3]))
+  break
+// retrieve a peer qr encoded
+  case "getqr":
+    getPeerQr(process.argv[3])
+    .then((qr)=>{
+      process.stdout.write(qr)
+    })
+    .catch((err)=>{
+      console.log(err)
+    })
+  break
+// add a peer object
+  case "addpeer":
+    addPeer(process.argv[3])
+  break
+
+  default:
+    console.log('Help text:')
+}
