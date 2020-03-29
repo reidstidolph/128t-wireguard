@@ -40,9 +40,9 @@ sudo make -C wireguard-tools/src install
 ```
 
 ### Add plugin scripts
-A KNI will be used receive Wireguard packets from the forwarding plane, and send clear packets back in to the forwarding plane. In preparation for the configuration of the KNI to be applied, set up some network plugin scripts.
+A KNI will be used receive Wireguard packets from the forwarding plane, and send clear packets back in to the forwarding plane. In preparation for configuration of the KNI to be applied, set up network plugin scripts to automate interface configuration.
 
-#### 1- Create directories
+#### 1- Create plugin directories
 ```
 sudo mkdir -p /var/lib/128technology/plugins/wg
 sudo mkdir -p /etc/128technology/plugins/network-scripts/host/wg-dev
@@ -51,11 +51,11 @@ sudo mkdir -p /etc/128technology/plugins/network-scripts/host/wg-dev
 #### 2- Place `init` and `shutdown` scripts
 Place the `init` and `shutdown` scripts contained in this repo in `/etc/128technology/plugins/network-scripts/host/wg-dev`, and make them executable.
 ```
-sudo chmod+x /etc/128technology/plugins/network-scripts/host/wg-dev/*
+sudo chmod +x /etc/128technology/plugins/network-scripts/host/wg-dev/*
 ```
 
 #### `init` script explanation
-You DO NOT need to run these commands, as they are handled by the `init` script. However for the sake of explaining what the script is doing, the following explains what the script is doing as if you were to do it manually.
+You **DO NOT** need to run these commands, as they are handled by the `init` script. However for the sake of explaining what the script is doing, the following steps through what the script is doing as if you were to do it manually.
 ```
 # create the namespace
 sudo ip netns add wireguard
@@ -76,7 +76,7 @@ sudo ip netns exec wireguard ip route add default via 128.128.128.129 dev wg-dev
 ```
 
 ### 128T configuration
-This configuration assumes a network-interface already exists, and `128.128.128.128` routes to it. Packets coming from Wireguard peers will arrive to this address, and a service will route them in to a KNI.
+This configuration assumes a network-interface already exists, and `128.128.128.128` routes to it. Packets coming from Wireguard peers will arrive to this address, and a service will route them in to the KNI.
 
 #### 1- Wireguard Service
 So that packets arriving from peers anywhere will match this service, it is set to `public`.
