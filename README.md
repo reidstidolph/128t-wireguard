@@ -55,7 +55,7 @@ sudo chmod +x /etc/128technology/plugins/network-scripts/host/wg-dev/*
 ```
 
 #### `init` script explanation
-You **DO NOT** need to run these commands, as they are handled by the `init` script. However for the sake of explaining what the script is doing, the following steps through what the script is doing as if you were to do it manually.
+You **DO NOT** need to run these commands, as they are handled by the `init` script. However for the sake of explanation, the following demonstrates what the script is doing as if you were to do it manually.
 ```
 # create the namespace
 sudo ip netns add wireguard
