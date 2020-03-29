@@ -6,7 +6,7 @@ More information about Wireguard can be found at https://www.wireguard.com/ .
 
 ## 128T Wireguard Setup
 
-This walks step by step through the setup of the Wireguard peer on a 128T router host.
+This walks step by step through the setup of the Wireguard peer on a 128T router host. Wireguard peers will be allocated from a `10.10.128.0/24` private network. The 128T router wireguard peer will be `10.10.128.1`, and additional devices will be allocated private addresses from `10.10.128.2-254`. Sessions arriving from devices will be assigned a `Work-From-Home` tenant as they are sent from the Wireguard interface back into the 128T forwarding plane.
 
 ### Installation on the 128T host
 
@@ -37,6 +37,42 @@ sudo make -C wireguard-linux-compat/src install
 ```
 make -C wireguard-tools/src -j$(nproc)
 sudo make -C wireguard-tools/src install
+```
+
+### Add plugin scripts
+A KNI will be used receive Wireguard packets from the forwarding plane, and send clear packets back in to the forwarding plane. In preparation for the configuration of the KNI to be applied, set up some network plugin scripts.
+
+#### 1- Create directories
+```
+sudo mkdir -p /var/lib/128technology/plugins/wg
+sudo mkdir -p /etc/128technology/plugins/network-scripts/host/wg-dev
+```
+
+#### 2- Place `init` and `shutdown` scripts
+Place the `init` and `shutdown` scripts contained in this repo in `/etc/128technology/plugins/network-scripts/host/wg-dev`, and make them executable.
+```
+sudo chmod+x /etc/128technology/plugins/network-scripts/host/wg-dev/*
+```
+
+#### `init` script explanation
+You DO NOT need to run these commands, as they are handled by the `init` script. However for the sake of explaining what the script is doing, the following explains what the script is doing as if you were to do it manually.
+```
+# create the namespace
+sudo ip netns add wireguard
+
+# move the KNI to the namespace and configure it
+sudo ip link set wg-dev netns wireguard
+sudo ip netns exec wireguard ip address add 128.128.128.128/31 dev wg-dev
+sudo ip netns exec wireguard ip link set wg-dev up
+
+# add the Wireguard interface to the namespace
+sudo ip netns exec wireguard ip link add wg0 type wireguard
+sudo ip netns exec wireguard ip addr add 10.10.128.1/24 dev wg0
+sudo ip netns exec wireguard ip link set up dev wg0
+
+# enable IP forwarding in the namespace and set route in to forwarding plane
+sudo ip netns exec wireguard sysctl -w -q net.ipv4.ip_forward=1
+sudo ip netns exec wireguard ip route add default via 128.128.128.129 dev wg-dev
 ```
 
 ### 128T configuration
@@ -127,32 +163,12 @@ service-route                       static-Wireguard
 exit
 ```
 
-#### 6- Set up namespace
-Someone deploying this would most likely want to use the `init` script contained in this repo. However for completeness in showing how to do the setup manually, the following sets up the namespace and moves the KNI `wg-dev` interface to it.
-```
-sudo ip netns add wireguard
-sudo ip link set wg-dev netns wireguard
-sudo ip netns exec wireguard ip address add 128.128.128.128/31 dev wg-dev
-sudo ip netns exec wireguard ip link set wg-dev up
-sudo ip netns exec wireguard ip route add default via 128.128.128.129 dev wg-dev
-sudo ip netns exec wireguard sysctl -w -q net.ipv4.ip_forward=1
-```
-
 ### Wireguard Configuration
 Wireguard will be configured to use `10.10.128.1` as its interface, and peers will be given remaining addresses from `10.10.128.0/24`.
 
-#### 1- Set up Wireguard interface
-Add the Wireguard interface to the namespace, and configure it with an address and network mask.
-```
-sudo ip netns exec wireguard ip link add wg0 type wireguard
-sudo ip netns exec wireguard ip addr add 10.10.128.1/24 dev wg0
-sudo ip netns exec wireguard ip link set up dev wg0
-```
-
-#### 2- Create keys and peer config files
+#### 1- Create keys and peer config files
 Wireguard has a lot of flexibility in the ways in which it can be configured. For more information see https://www.wireguard.com/quickstart/ and `man wg`. For this we'll set up a conf and key files containing requisite configuration of and keys for the 128T Wireguard, and its peers (`my-laptop` and `my-mobile`).
 ```
-sudo mkdir /var/lib/128technology/plugins/wg
 cd /var/lib/128technology/plugins/wg
 sudo touch 128t.conf && sudo touch 128t.priv && sudo touch 128t.pub
 sudo touch my-laptop.conf && sudo touch my-laptop.priv && sudo touch my-laptop.pub
@@ -170,7 +186,7 @@ wg pubkey < /var/lib/128technology/plugins/wg/my-laptop.priv > /var/lib/128techn
 wg genkey > /var/lib/128technology/plugins/wg/my-mobile.priv
 wg pubkey < /var/lib/128technology/plugins/wg/my-mobile.priv > /var/lib/128technology/plugins/wg/my-mobile.pub
 ```
-#### 3- Set up 128T Wireguard peer config
+#### 2- Set up 128T Wireguard peer config
 Set up the 128T peer `/var/lib/128technology/plugins/wg/128t.conf` file with settings for its interface, and the peers.
 ```
 [Interface]
@@ -187,7 +203,7 @@ PublicKey = <my-laptop public key string>
 AllowedIPs = 10.10.128.3/32
 PublicKey = <my-mobile public key string>
 ```
-#### 4- Set up remote peer configs
+#### 3- Set up remote peer configs
 Set up the laptop peer `/var/lib/128technology/plugins/wg/my-laptop.conf` file with settings for its interface, and the 128T peer. Note the `AllowedIPs` setting corresponds with the private service address we want to send to the 128T Wireguard peer. You can customize this setting for your environment, to control what the remote device sends to the 128T peer, and what it sends directly out its default route.
 ```
 [Interface]
@@ -212,7 +228,7 @@ PublicKey = <128T public key string>
 AllowedIPs = 172.16.128.0/24
 Endpoint = 128.128.128.128:12800
 ```
-#### 5- Apply configuration to the Wireguard interface
+#### 4- Apply configuration to the Wireguard interface
 Apply the 128T Wireguard configuration to the interface within the namespace.
 ```
 sudo ip netns exec wireguard wg setconf wg0 /var/lib/128technology/plugins/wg/128t.conf
