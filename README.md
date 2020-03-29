@@ -248,6 +248,3 @@ To set up the remote devices, copy the conf settings to the devices. For Android
 sudo yum install qrencode
 sudo qrencode -t ansiutf8 < /var/lib/128technology/plugins/wg/my-mobile.conf
 ```
-
-## Plugin Scripts
-To automate the steps for setting up the namespace and interfaces, this repo contains a `init` and `shutdown` plugin script. Copy them to `/etc/128technology/plugins/network-scripts/host/wg-dev/` on your 128T host, and the interfaces will be automatically added and removed as 128T is started/stopped.
