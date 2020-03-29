@@ -40,7 +40,7 @@ sudo make -C wireguard-tools/src install
 ```
 
 ### 128T configuration
-This configuration assumes a network-interface already exists, with `128.128.128.128` as it's address. Packets coming from Wireguard peers will arrive to this address, and a service will route them in to a KNI.
+This configuration assumes a network-interface already exists, and `128.128.128.128` routes to it. Packets coming from Wireguard peers will arrive to this address, and a service will route them in to a KNI.
 
 #### 1- Wireguard Service
 So that packets arriving from peers anywhere will match this service, it is set to `public`.
@@ -90,7 +90,7 @@ exit
 ```
 
 #### 4- KNI Interface
-The host KNI is configured to operate in an isolated network namespace called `wireguard`. Packets emerging from the Wireguard Linux interface will be routed back to this KNI, so the `Work-From-Home` tenant is configured.
+The host KNI is configured to operate in an isolated network namespace called `wireguard`. Packets emerging from the Wireguard Linux interface will be routed back to this KNI, so the `Work-From-Home` tenant is configured. Addressing for the interface is set to link-local, as is common for network plugins.
 ```
 device-interface  wg-dev
     name          wg-dev
@@ -103,25 +103,26 @@ device-interface  wg-dev
         name       wg-net
         tenant     Work-From-Home
 
-        address    128.128.128.129
-            ip-address     128.128.128.129
+        address    169.254.129.64
+            ip-address     169.254.129.64
             prefix-length  31
-            gateway        128.128.128.128
+            gateway        169.254.129.65
         exit
     exit
 exit
 ```
 #### 5- Add a route
-Route the Wireguard service in to the KNI.
+Route the Wireguard service in to the KNI, with a destination NAT to the KNI.
 ```
 service-route                       static-Wireguard
     name          static-Wireguard
     service-name  Wireguard
+    nat-target    169.254.129.65
 
     next-hop      node1 wg-net
         node-name   node1
         interface   wg-net
-        gateway-ip  128.128.128.128
+        gateway-ip  169.254.129.65
     exit
 exit
 ```
@@ -138,7 +139,7 @@ sudo ip netns exec wireguard sysctl -w -q net.ipv4.ip_forward=1
 ```
 
 ### Wireguard Configuration
-Wireguard will be configured to use `10.10.128.1` as it's interface, and peers will be given remaining addresses from `10.10.128.0/24`.
+Wireguard will be configured to use `10.10.128.1` as its interface, and peers will be given remaining addresses from `10.10.128.0/24`.
 
 #### 1- Set up Wireguard interface
 Add the Wireguard interface to the namespace, and configure it with an address and network mask.
@@ -149,7 +150,7 @@ sudo ip netns exec wireguard ip link set up dev wg0
 ```
 
 #### 2- Create keys and peer config files
-Wireguard has a lot of flexibility in the ways in which it can be configured. For more information see https://www.wireguard.com/quickstart/ and `man wg`. For this we'll set up a conf and key files containing requisite configuration of and keys for the 128T Wireguard, and it's peers (`my-laptop` and `my-mobile`).
+Wireguard has a lot of flexibility in the ways in which it can be configured. For more information see https://www.wireguard.com/quickstart/ and `man wg`. For this we'll set up a conf and key files containing requisite configuration of and keys for the 128T Wireguard, and its peers (`my-laptop` and `my-mobile`).
 ```
 sudo mkdir /var/lib/128technology/plugins/wg
 cd /var/lib/128technology/plugins/wg
@@ -170,7 +171,7 @@ wg genkey > /var/lib/128technology/plugins/wg/my-mobile.priv
 wg pubkey < /var/lib/128technology/plugins/wg/my-mobile.priv > /var/lib/128technology/plugins/wg/my-mobile.pub
 ```
 #### 3- Set up 128T Wireguard peer config
-Set up the 128T peer `/var/lib/128technology/plugins/wg/128t.conf` file with settings for it's interface, and the peers.
+Set up the 128T peer `/var/lib/128technology/plugins/wg/128t.conf` file with settings for its interface, and the peers.
 ```
 [Interface]
 ListenPort = 12800
@@ -187,7 +188,7 @@ AllowedIPs = 10.10.128.3/32
 PublicKey = <my-mobile public key string>
 ```
 #### 4- Set up remote peer configs
-Set up the laptop peer `/var/lib/128technology/plugins/wg/my-laptop.conf` file with settings for it's interface, and the 128T peer. Note the `AllowedIPs` setting corresponds with the private service address we want to send to the 128T Wireguard peer. You can customize this setting for your environment, to control what the remote device sends to the 128T peer, and what it sends directly out it's default route.
+Set up the laptop peer `/var/lib/128technology/plugins/wg/my-laptop.conf` file with settings for its interface, and the 128T peer. Note the `AllowedIPs` setting corresponds with the private service address we want to send to the 128T Wireguard peer. You can customize this setting for your environment, to control what the remote device sends to the 128T peer, and what it sends directly out its default route.
 ```
 [Interface]
 Address = 10.10.128.2/32
@@ -199,7 +200,7 @@ PublicKey = <128T public key string>
 AllowedIPs = 172.16.128.0/24
 Endpoint = 128.128.128.128:12800
 ```
-Set up the mobile peer `/var/lib/128technology/plugins/wg/my-mobile.conf` file with settings for it's interface, and the 128T peer. Note the `AllowedIPs` setting corresponds with the private service address we want to send to the 128T Wireguard peer. You can customize this setting for your environment, to control what the remote device sends to the 128T peer, and what it sends directly out it's default route.
+Set up the mobile peer `/var/lib/128technology/plugins/wg/my-mobile.conf` file with settings for its interface, and the 128T peer. Note the `AllowedIPs` setting corresponds with the private service address we want to send to the 128T Wireguard peer. You can customize this setting for your environment, to control what the remote device sends to the 128T peer, and what it sends directly out its default route.
 ```
 [Interface]
 Address = 10.10.128.3/32
