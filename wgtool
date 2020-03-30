@@ -4,6 +4,77 @@
 const fs = require('fs')
 const dataFile = `${__dirname}/.wgdata.json`
 const { spawn } = require('child_process')
+
+const helpText = `
+Usage: wgtool <cmd> [<args>]
+
+A utility for managing a network of Wireguard peers, and generating config.
+This is a wrapper around 'qrencode' and 'wg', so make sure they are installed on the host running this tool.
+
+Available subcommands:
+  init     : Initialize the Wireguard network.
+  addspoke : Builds a new spoke peer.
+  addhub   : Builds a new hub peer.
+  getpeer  : Get Wireguard config for a peer assigned in the network.
+  getqr    : Get QR encoded Wireguard config for a peer assigned in the network.
+  delpeer  : Removes a peer from the network.
+
+`
+
+const initHelp = `
+Usage: wgtool init '<JSON>'
+
+Initializes the wireguard network, by creating an initial hub peer.
+Network data is saved in '.wgdata.json'.
+
+Example:
+  wgtool init '{"ip":"10.10.128.1", "endpoint":"1.1.1.1", "port":"12800", "networks": ["10.0.0.0/24","192.168.1.0/24"], "dns": ["1.1.1.1","8.8.8.8"]}'
+
+JSON Parameters:
+  ip       : Hub IP in Wireguard network. Added peers will increment from this address.
+  endpoint : Address at which the initial hub peer will be reached by spoke peers.
+  port     : Port on which the initial hub peer will listen for Wireguard packets.
+  networks : Address prefixes to be routed to the initial hub peer.
+  dns      : DNS servers IPs provided to network spoke peers.
+`
+
+const addspokeHelp = `
+Usage: wgtool addspoke '<JSON>'
+
+Example:
+  wgtool addspoke '{"name":"my-mobile"}'
+
+JSON Parameters:
+  name : Friendly name for peer.
+`
+
+const addhubHelp = `
+Usage: wgtool addhub '<JSON>'
+
+Hub Example:
+  wgtool addhub '{"name":"another-gateway", "endpoint":"2.2.2.2", "port":"12800", "networks": ["172.16.0.0/24"]}'
+
+JSON Parameters:
+  name     : Friendly name for peer.
+  endpoint : (optional) Address at which the hub peer will be reached by spoke peers.
+  port     : Port on which the hub peer will listen for Wireguard packets.
+  networks : Address prefixes to be routed to the initial hub peer.
+`
+
+const getpeerHelp = `
+Usage: wgtool getpeer 'string'
+
+Example:
+
+JSON Parameters:
+`
+const getqrHelp = `
+Usage: wgtool getqr '<JSON>'
+
+Example:
+`
+const delpeerHelp = ``
+
 var wgData
 
 const ipTools = {
@@ -44,7 +115,7 @@ const wg = {
   genPrivKey: function(){
     return new Promise((resolve, reject)=>{
       let output = ""
-      let wgKeyGen = spawn('/usr/bin/wg', ['genkey'])
+      let wgKeyGen = spawn('wg', ['genkey'])
 
       wgKeyGen.stdout.on('data', (data) => {
         output = data.toString().replace(/\n$/, '')
@@ -74,7 +145,7 @@ const wg = {
   genPubKey: function(privkey){
     return new Promise((resolve, reject)=>{
       let output = ""
-      let wgKeyGen = spawn('/usr/bin/wg', ['pubkey'])
+      let wgKeyGen = spawn('wg', ['pubkey'])
 
       wgKeyGen.stdin.write(privkey)
       wgKeyGen.stdin.end()
@@ -113,29 +184,32 @@ async function initialize(indexPeer){
     peerInput = JSON.parse(indexPeer)
   } catch (err) {
     console.log('unable to parse input as JSON.')
-    console.log('expects \'{"ip":"10.10.128.1", "waypoint":"1.1.1.1", "networks": ["10.0.0.0/24"] }\'')
+    console.log(initHelp)
     process.exit(1)
   }
   // validate properties
-  if (!peerInput.ip || !peerInput.waypoint || !Array.isArray(peerInput.networks)) {
+  if (!peerInput.ip || !peerInput.endpoint || !Array.isArray(peerInput.networks)) {
     console.log('required properties missing.')
-    console.log('expects \'{"ip":"10.10.128.1", "waypoint":"1.1.1.1", "networks": ["10.0.0.0/24"] }\'')
+    console.log(initHelp)
     process.exit(1)
   }
   // validate ip
   if (!ipTools.ipIsValid(peerInput.ip)) {
     console.log(`invalid ip value '${peerInput.ip}'`)
+    console.log(initHelp)
     process.exit(1)
   }
-  // validate waypoint
-  if (!ipTools.ipIsValid(peerInput.waypoint)) {
-    console.log(`invalid waypoint value '${peerInput.waypoint}'`)
+  // validate endpoint
+  if (!ipTools.ipIsValid(peerInput.endpoint)) {
+    console.log(`invalid endpoint value '${peerInput.endpoint}'`)
+    console.log(initHelp)
     process.exit(1)
   }
   // validate prefixes
   peerInput.networks.forEach((prefix)=>{
     if (!ipTools.prefixIsValid(prefix)) {
       console.log(`invalid prefix '${prefix}'`)
+      console.log(initHelp)
       process.exit(1)
     }
   })
@@ -146,7 +220,7 @@ async function initialize(indexPeer){
   wgData.peers = {}
 
   try {
-    wgData.peers[peerInput.ip] = await genPeer("gateway", peerInput.networks, peerInput.waypoint)
+    wgData.peers[peerInput.ip] = await genPeer("gateway", peerInput.networks, peerInput.endpoint)
     await writeDataFile(wgData)
     // initialized
     console.log('initialized.')
@@ -169,7 +243,7 @@ function qrGen(input){
     let output
     let bufferArray = []
 
-    let qrEncode = spawn('/usr/bin/qrencode', ['-t', 'ansiutf8'])
+    let qrEncode = spawn('qrencode', ['-t', 'ansiutf8'])
     qrEncode.stdin.write(input)
     qrEncode.stdin.end()
 
@@ -192,18 +266,18 @@ function qrGen(input){
  *
  * @param {string} name - friendly name of peer
  * @param {array} networks - ip/prefixes for peer
- * @param {string} waypoint - ip of peer waypoint
+ * @param {string} endpoint - ip of peer endpoint
  * @return {Promise} Promised results of generated peer object.
  *
 */
 
-function genPeer(name, networks, waypoint){
+function genPeer(name, networks, endpoint){
   return new Promise((resolve, reject)=>{
     async function genkeys(){
       try {
         let privkey = await wg.genPrivKey()
         let pubkey = await wg.genPubKey(privkey)
-        let peer = {"name":name,"waypoint":waypoint,"networks":networks,"priv":privkey,"pub":pubkey}
+        let peer = {"name":name,"endpoint":endpoint,"networks":networks,"priv":privkey,"pub":pubkey}
         resolve(peer)
       } catch (err) {
         reject(err)
@@ -245,7 +319,7 @@ function peerToConf(peerKey){
   // get peer from peers
   let peer = wgData.peers[peerKey]
 
-  if (peer.waypoint === null) {
+  if (peer.endpoint === null) {
 
     // spoke
 
@@ -254,12 +328,11 @@ function peerToConf(peerKey){
 Address = ${peerKey}/32
 PrivateKey = ${peer.priv}
 DNS = 1.1.1.1
-DNS = 8.8.8.8
-`
+DNS = 8.8.8.8`
     // find hub peers
     for (var key in wgData.peers) {
       let remotePeer = wgData.peers[key]
-      if (remotePeer.waypoint !== null) {
+      if (remotePeer.endpoint !== null) {
         // got hub
         // generate allowed IPs
         let allowedIps = []
@@ -269,17 +342,18 @@ DNS = 8.8.8.8
         })
 
         conf+=`
+
 [Peer]
 # ${remotePeer.name}
-${allowedIps.join('\n')}
 PublicKey = ${remotePeer.pub}
-Endpoint = ${remotePeer.waypoint}:12800`
+${allowedIps.join('\n')}
+Endpoint = ${remotePeer.endpoint}:12800`
 
       }
     }
     // return conf string
     return conf
-  } else if (peer.waypoint) {
+  } else if (peer.endpoint) {
 
     // hub
 
@@ -291,14 +365,14 @@ PrivateKey = ${peer.priv}`
     // find spoke peers
     for (var key in wgData.peers) {
       let remotePeer = wgData.peers[key]
-      if (remotePeer.waypoint === null) {
+      if (remotePeer.endpoint === null) {
         // got spoke
         conf+=`
 
 [Peer]
 # ${remotePeer.name}
-AllowedIPs = ${key}/32
-PublicKey = ${remotePeer.pub}`
+PublicKey = ${remotePeer.pub}
+AllowedIPs = ${key}/32`
       }
     }
     // return conf string
@@ -351,61 +425,96 @@ async function getPeerQr(peerIdentifier){
 }
 
 /**
- * Add a new peer
+ * Add a new spoke peer
  *
  * @param {object} peerInput - object container peer settings
  * @return {string} wireguard config string
  *
 */
-async function addPeer(peerInput){
+async function addspoke(peerInput){
   // see if input can be parsed as JSON
   try {
     peerInput = JSON.parse(peerInput)
   } catch (err) {
     console.log('unable to parse input as JSON.')
-    console.log('expects \'{"name":"foo"}\' for device peer.')
-    console.log('expects \'{"name":"foo", "waypoint":"1.1.1.1", "networks": ["10.0.0.0/24"]}\' for router peer.')
+    console.log(addspokeHelp)
     process.exit(1)
   }
   // validate name input
   if (!peerInput.name) {
     console.log('required properties missing.')
-    console.log('expects \'{"name":"foo"}\' for device peer.')
-    console.log('expects \'{"name":"foo", "waypoint":"1.1.1.1", "networks": ["10.0.0.0/24"]}\' for router peer.')
+    console.log(addspokeHelp)
     process.exit(1)
-  }
-  // if a waypoint is provided, make sure it is valid
-  if (peerInput.waypoint) {
-    // validate waypoint ip
-    if (!ipTools.ipIsValid(peerInput.waypoint)) {
-      console.log(`invalid waypoint value '${peerInput.waypoint}'`)
-      process.exit(1)
-    }
-    // validate required networks
-    if (!Array.isArray(peerInput.networks)) {
-      console.log('required properties missing.')
-      console.log('expects \'{"name":"foo", "waypoint":"1.1.1.1", "networks": ["10.0.0.0/24"]}\' for router peer.')
-      process.exit(1)
-    }
-    // validate prefixes
-    peerInput.networks.forEach((prefix)=>{
-      if (!ipTools.prefixIsValid(prefix)) {
-        console.log(`invalid prefix '${prefix}'`)
-        process.exit(1)
-      }
-    })
   }
 
   // input validated
 
   let nextIp = ipTools.getNextIp()
   console.log(nextIp)
-  if (!peerInput.networks || !peerInput.waypoint) {
-    peerInput.waypoint = null
+  if (!peerInput.networks || !peerInput.endpoint) {
+    peerInput.endpoint = null
     peerInput.networks = [`${nextIp}/32`]
   }
   try {
-    wgData.peers[ipTools.getNextIp()] = await genPeer(peerInput.name, peerInput.networks, peerInput.waypoint)
+    wgData.peers[ipTools.getNextIp()] = await genPeer(peerInput.name, peerInput.networks, peerInput.endpoint)
+    await writeDataFile(wgData)
+    // initialized
+    console.log('added.')
+    process.exit(0)
+  } catch (err) {
+    console.error(err)
+    process.exit(1)
+  }
+}
+
+/**
+ * Add a new spoke peer
+ *
+ * @param {object} peerInput - object container peer settings
+ * @return {string} wireguard config string
+ *
+*/
+async function addhub(peerInput){
+  // see if input can be parsed as JSON
+  try {
+    peerInput = JSON.parse(peerInput)
+  } catch (err) {
+    console.log('unable to parse input as JSON.')
+    console.log(addhubHelp)
+    process.exit(1)
+  }
+  // validate name input
+  if (!peerInput.name || !peerInput.endpoint || !Array.isArray(peerInput.networks)) {
+    console.log('required properties missing.')
+    console.log(addhubHelp)
+    process.exit(1)
+  }
+  // validate endpoint ip
+  if (!ipTools.ipIsValid(peerInput.endpoint)) {
+    console.log(`invalid endpoint value '${peerInput.endpoint}'`)
+    console.log(addhubHelp)
+    process.exit(1)
+  }
+  // validate prefixes
+  peerInput.networks.forEach((prefix)=>{
+    if (!ipTools.prefixIsValid(prefix)) {
+      console.log(`invalid prefix '${prefix}'`)
+      console.log(addhubHelp)
+      process.exit(1)
+    }
+  })
+
+
+  // input validated
+
+  let nextIp = ipTools.getNextIp()
+  console.log(nextIp)
+  if (!peerInput.networks || !peerInput.endpoint) {
+    peerInput.endpoint = null
+    peerInput.networks = [`${nextIp}/32`]
+  }
+  try {
+    wgData.peers[ipTools.getNextIp()] = await genPeer(peerInput.name, peerInput.networks, peerInput.endpoint)
     await writeDataFile(wgData)
     // initialized
     console.log('added.')
@@ -449,11 +558,15 @@ switch (process.argv[2]) {
       console.log(err)
     })
   break
-// add a peer object
-  case "addpeer":
-    addPeer(process.argv[3])
+// add a spoke peer object
+  case "addspoke":
+    addspoke(process.argv[3])
+  break
+// add a hub peer object
+  case "addhub":
+    addhub(process.argv[3])
   break
 
   default:
-    console.log('Help text:')
+    console.log(helpText)
 }
