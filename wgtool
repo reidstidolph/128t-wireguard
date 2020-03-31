@@ -183,32 +183,41 @@ async function initialize(indexPeer){
   try {
     peerInput = JSON.parse(indexPeer)
   } catch (err) {
-    console.log('unable to parse input as JSON.')
+    console.log('ERROR: unable to parse input as JSON.')
     console.log(initHelp)
     process.exit(1)
   }
   // validate properties
   if (!peerInput.ip || !peerInput.endpoint || !Array.isArray(peerInput.networks)) {
-    console.log('required properties missing.')
+    console.log('ERROR: required properties missing.')
     console.log(initHelp)
     process.exit(1)
   }
   // validate ip
   if (!ipTools.ipIsValid(peerInput.ip)) {
-    console.log(`invalid ip value '${peerInput.ip}'`)
+    console.log(`ERROR: invalid ip value '${peerInput.ip}'`)
     console.log(initHelp)
     process.exit(1)
   }
   // validate endpoint
   if (!ipTools.ipIsValid(peerInput.endpoint)) {
-    console.log(`invalid endpoint value '${peerInput.endpoint}'`)
+    console.log(`ERROR: invalid endpoint value '${peerInput.endpoint}'`)
     console.log(initHelp)
     process.exit(1)
   }
   // validate prefixes
   peerInput.networks.forEach((prefix)=>{
     if (!ipTools.prefixIsValid(prefix)) {
-      console.log(`invalid prefix '${prefix}'`)
+      console.log(`ERROR: invalid prefix '${prefix}'`)
+      console.log(initHelp)
+      process.exit(1)
+    }
+  })
+
+  // validate DNS IPs
+  peerInput.dns.forEach((dnsIp)=>{
+    if (!ipTools.ipIsValid(dnsIp)) {
+      console.log(`ERROR: invalid dns address '${dnsIp}'`)
       console.log(initHelp)
       process.exit(1)
     }
@@ -217,6 +226,7 @@ async function initialize(indexPeer){
   // inputs validated
   wgData = {}
   wgData.peerIndex = peerInput.ip
+  wgData.dns = peerInput.dns
   wgData.peers = {}
 
   try {
@@ -326,9 +336,13 @@ function peerToConf(peerKey){
     let conf = `[Interface]
 # ${peer.name}
 Address = ${peerKey}/32
-PrivateKey = ${peer.priv}
-DNS = 1.1.1.1
-DNS = 8.8.8.8`
+PrivateKey = ${peer.priv}`
+
+    // get DNS servers
+    for (var key in wgData.dns) {
+      conf += `\nDNS = ${wgData.dns[key]}`
+    }
+
     // find hub peers
     for (var key in wgData.peers) {
       let remotePeer = wgData.peers[key]
@@ -534,7 +548,7 @@ try {
   if (process.argv[2] === 'init') {
     initialize(process.argv[3])
   } else {
-    console.log('initialization required.')
+    console.log(`Initialization required. 'wgtool init'`)
     process.exit(1)
   }
 }
