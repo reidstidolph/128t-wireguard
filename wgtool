@@ -16,6 +16,7 @@ Available subcommands:
   addspoke : Builds a new spoke peer.
   addhub   : Builds a new hub peer.
   getpeer  : Get Wireguard config for a peer assigned in the network.
+  getpeers : Get names and IP addresses of peers
   getqr    : Get QR encoded Wireguard config for a peer assigned in the network.
   delpeer  : Removes a peer from the network.
 
@@ -51,6 +52,8 @@ JSON Parameters:
 const addhubHelp = `
 Usage: wgtool addhub '<JSON>'
 
+Adds a hub to the wireguard network.
+
 Hub Example:
   wgtool addhub '{"name":"another-gateway", "endpoint":"2.2.2.2", "port":"12800", "networks": ["172.16.0.0/24"]}'
 
@@ -64,16 +67,31 @@ JSON Parameters:
 const getpeerHelp = `
 Usage: wgtool getpeer 'string'
 
-Example:
+Retrieve wireguard config for a peer based on name, or by wireguard IP address.
 
-JSON Parameters:
+Example:
+  wgtool getpeer 'foo'
+  wgtool getpeer '10.10.128.2'
 `
+
 const getqrHelp = `
-Usage: wgtool getqr '<JSON>'
+Usage: wgtool getqr 'string'
+
+Retrieve QR encoded wireguard config for a peer based on name, or by wireguard IP address.
 
 Example:
+  wgtool getpeer 'foo'
+  wgtool getpeer '10.10.128.2'
 `
-const delpeerHelp = ``
+const delpeerHelp = `
+Usage: wgtool delpeer 'string'
+
+Delete wireguard peer based on name, or by wireguard IP address.
+
+Example:
+  wgtool delpeer 'foo'
+  wgtool delpeer '10.10.128.2'
+`
 
 var wgData
 
@@ -175,7 +193,6 @@ const wg = {
  * @param {object} indexPeer - initial peer
  *
 */
-
 async function initialize(indexPeer){
 
   // see if input can be parsed as JSON
@@ -254,6 +271,12 @@ function qrGen(input){
     let bufferArray = []
 
     let qrEncode = spawn('qrencode', ['-t', 'ansiutf8'])
+
+    qrEncode.on('error', (err)=>{
+      console.error('ERROR: unable to spawn qrencode process.')
+      process.exit(1)
+    })
+
     qrEncode.stdin.write(input)
     qrEncode.stdin.end()
 
@@ -280,7 +303,6 @@ function qrGen(input){
  * @return {Promise} Promised results of generated peer object.
  *
 */
-
 function genPeer(name, networks, endpoint){
   return new Promise((resolve, reject)=>{
     async function genkeys(){
@@ -326,7 +348,6 @@ function writeDataFile(data) {
 */
 function peerToConf(peerKey){
 
-  // get peer from peers
   let peer = wgData.peers[peerKey]
 
   if (peer.endpoint === null) {
@@ -395,13 +416,13 @@ AllowedIPs = ${key}/32`
 }
 
 /**
- * Get peer config
+ * Lookup peer in wgData
  *
  * @param {string} peerIdentifier - string containing IP address of peer
- * @return {string} wireguard config string
+ * @return {string} wgData peer key, or null if not found
  *
 */
-function getPeer(peerIdentifier) {
+function peerLookup(peerIdentifier){
 
   function searchByName(string){
     for (var peerKey in wgData.peers) {
@@ -415,27 +436,79 @@ function getPeer(peerIdentifier) {
 
   let nameLookup = searchByName(peerIdentifier)
 
-  if (wgData.peers[peerIdentifier]) {
-    return peerToConf(peerIdentifier)
-  } else if (nameLookup) {
-    return peerToConf(nameLookup)
+  if (nameLookup) {
+    return nameLookup
+  } else if (wgData.peers[peerIdentifier]) {
+    return peerIdentifier
   } else {
-    console.log('peer not found')
+    return null
+  }
+}
+
+/**
+ * Get peer config
+ *
+ * @param {string} peerIdentifier - string containing IP address of peer
+ * @return {string} wireguard config string
+ *
+*/
+function getPeer(peerIdentifier) {
+
+  let peer = peerLookup(peerIdentifier)
+
+  if (peer || peer != null) {
+    return peerToConf(peer)
+  } else {
+    console.log('ERROR: peer not found')
+    console.log(getpeerHelp)
     process.exit(1)
   }
 }
 
 /**
- * Lookup peer in data object
+ * Log peers
  *
- * @param {string} peerIdentifier - string containing IP address of peer
- * @return {Promise} Promised results of peer generation and add
+*/
+function getPeers() {
+
+  for (var key in wgData.peers) {
+    let peer = wgData.peers[key]
+    let type
+    if (wgData.peers[key].endpoint === null ) {
+      type = 'spoke'
+      console.log(`${key} ${type} ${peer.name}`)
+    } else {
+      type = 'hub'
+      console.log(`${key} ${type}   ${peer.name}`)
+    }
+  }
+}
+/**
+ * Get QR encoded peer config
+ *
+ * @param {string} peerIdentifier - string containing IP address or name of peer
+ * @return {Promise} Promised results of peer QR encode
  *
 */
 async function getPeerQr(peerIdentifier){
-  let foundPeerConf = getPeer(peerIdentifier)
-  let qr = await qrGen(foundPeerConf)
-  return qr
+
+  let peer = peerLookup(peerIdentifier)
+
+  if (peer || peer != null) {
+    let peerConf = peerToConf(peer)
+    try {
+      let qr = await qrGen(peerConf)
+      return qr
+    } catch (err) {
+      console.error('ERROR: unable to generate QR')
+      console.error(err);
+      process.exit(1)
+    }
+  } else {
+    console.log('ERROR: peer not found')
+    console.log(getqrHelp)
+    process.exit(1)
+  }
 }
 
 /**
@@ -561,6 +634,10 @@ switch (process.argv[2]) {
 // retrieve a peer
   case "getpeer":
     console.log(getPeer(process.argv[3]))
+  break
+// retrieve peers summary
+  case "getpeers":
+    getPeers()
   break
 // retrieve a peer qr encoded
   case "getqr":
