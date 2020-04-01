@@ -62,7 +62,7 @@ sudo ip netns add wireguard
 
 # move the KNI to the namespace and configure it
 sudo ip link set wg-dev netns wireguard
-sudo ip netns exec wireguard ip address add 128.128.128.128/31 dev wg-dev
+sudo ip netns exec wireguard ip address add 169.254.129.65/31 dev wg-dev
 sudo ip netns exec wireguard ip link set wg-dev up
 
 # add the Wireguard interface to the namespace
@@ -72,7 +72,7 @@ sudo ip netns exec wireguard ip link set up dev wg0
 
 # enable IP forwarding in the namespace and set route in to forwarding plane
 sudo ip netns exec wireguard sysctl -w -q net.ipv4.ip_forward=1
-sudo ip netns exec wireguard ip route add default via 128.128.128.129 dev wg-dev
+sudo ip netns exec wireguard ip route add default via 169.254.129.64 dev wg-dev
 ```
 
 ### 128T configuration
