@@ -101,6 +101,14 @@ const ipTools = {
   "ipIsValid": function(ipAddr){
     return this.ipRegex.test(ipAddr)
   },
+  "portIsValid": function(port){
+    let intPort = parseInt(port)
+    if (intPort > 0 && intPort <= 65535) {
+      return true
+    } else {
+      return false
+    }
+  },
   "prefixIsValid": function(prefix){
     return this.prefixRegex.test(prefix)
   },
@@ -222,6 +230,12 @@ async function initialize(indexPeer){
     console.log(initHelp)
     process.exit(1)
   }
+  // validate port number
+  if (!ipTools.portIsValid(peerInput.port)) {
+    console.log(`invalid port value '${peerInput.port}'`)
+    console.log(addhubHelp)
+    process.exit(1)
+  }
   // validate prefixes
   peerInput.networks.forEach((prefix)=>{
     if (!ipTools.prefixIsValid(prefix)) {
@@ -247,7 +261,7 @@ async function initialize(indexPeer){
   wgData.peers = {}
 
   try {
-    wgData.peers[peerInput.ip] = await genPeer("gateway", peerInput.networks, peerInput.endpoint)
+    wgData.peers[peerInput.ip] = await genPeer("gateway", peerInput.networks, peerInput.endpoint, peerInput.port)
     await writeDataFile(wgData)
     // initialized
     console.log('initialized.')
@@ -303,13 +317,13 @@ function qrGen(input){
  * @return {Promise} Promised results of generated peer object.
  *
 */
-function genPeer(name, networks, endpoint){
+function genPeer(name, networks, endpoint, port){
   return new Promise((resolve, reject)=>{
     async function genkeys(){
       try {
         let privkey = await wg.genPrivKey()
         let pubkey = await wg.genPubKey(privkey)
-        let peer = {"name":name,"endpoint":endpoint,"networks":networks,"priv":privkey,"pub":pubkey}
+        let peer = {"name":name,"endpoint":endpoint,"port":port,"networks":networks,"priv":privkey,"pub":pubkey}
         resolve(peer)
       } catch (err) {
         reject(err)
@@ -382,7 +396,7 @@ PrivateKey = ${peer.priv}`
 # ${remotePeer.name}
 PublicKey = ${remotePeer.pub}
 ${allowedIps.join('\n')}
-Endpoint = ${remotePeer.endpoint}:12800`
+Endpoint = ${remotePeer.endpoint}:${remotePeer.port}`
 
       }
     }
@@ -394,7 +408,7 @@ Endpoint = ${remotePeer.endpoint}:12800`
 
     let conf = `[Interface]
 # ${peer.name}
-ListenPort = 12800
+ListenPort = ${peer.port}
 PrivateKey = ${peer.priv}`
 
     // find spoke peers
@@ -540,10 +554,11 @@ async function addspoke(peerInput){
   console.log(nextIp)
   if (!peerInput.networks || !peerInput.endpoint) {
     peerInput.endpoint = null
+    peerInput.port = null
     peerInput.networks = [`${nextIp}/32`]
   }
   try {
-    wgData.peers[ipTools.getNextIp()] = await genPeer(peerInput.name, peerInput.networks, peerInput.endpoint)
+    wgData.peers[ipTools.getNextIp()] = await genPeer(peerInput.name, peerInput.networks, peerInput.endpoint, peerInput.port)
     await writeDataFile(wgData)
     // initialized
     console.log('added.')
@@ -571,7 +586,7 @@ async function addhub(peerInput){
     process.exit(1)
   }
   // validate name input
-  if (!peerInput.name || !peerInput.endpoint || !Array.isArray(peerInput.networks)) {
+  if (!peerInput.name || !peerInput.endpoint || !peerInput.port || !Array.isArray(peerInput.networks)) {
     console.log('required properties missing.')
     console.log(addhubHelp)
     process.exit(1)
@@ -579,6 +594,12 @@ async function addhub(peerInput){
   // validate endpoint ip
   if (!ipTools.ipIsValid(peerInput.endpoint)) {
     console.log(`invalid endpoint value '${peerInput.endpoint}'`)
+    console.log(addhubHelp)
+    process.exit(1)
+  }
+  // validate port number
+  if (!ipTools.portIsValid(peerInput.port)) {
+    console.log(`invalid port value '${peerInput.port}'`)
     console.log(addhubHelp)
     process.exit(1)
   }
@@ -601,7 +622,7 @@ async function addhub(peerInput){
     peerInput.networks = [`${nextIp}/32`]
   }
   try {
-    wgData.peers[ipTools.getNextIp()] = await genPeer(peerInput.name, peerInput.networks, peerInput.endpoint)
+    wgData.peers[ipTools.getNextIp()] = await genPeer(peerInput.name, peerInput.networks, peerInput.endpoint, peerInput.port)
     await writeDataFile(wgData)
     // initialized
     console.log('added.')
