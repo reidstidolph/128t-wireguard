@@ -4,6 +4,8 @@ Example implementation of a Wireguard gateway integrated with 128T.
 
 More information about Wireguard can be found at https://www.wireguard.com/ .
 
+Also check out info on [wgtool for config gen](#wgtool-for-wireguard-config-gen) at the bottome of this README.
+
 ## 128T Wireguard Setup
 
 This walks step by step through the setup of the Wireguard peer on a 128T router host. Wireguard peers will be allocated from a `10.10.128.0/24` private network. The 128T router wireguard peer will be `10.10.128.1`, and additional devices will be allocated private addresses from `10.10.128.2-254`. Sessions arriving from devices will be assigned a `Work-From-Home` tenant as they are sent from the Wireguard interface back into the 128T forwarding plane.
@@ -249,10 +251,10 @@ sudo yum install qrencode
 sudo qrencode -t ansiutf8 < /var/lib/128technology/plugins/wg/my-mobile.conf
 ```
 
-## `wgtool` for Wireguard Config Gen
+# wgtool for Wireguard Config Gen
 Included in this repo is a `wgtool` script for creating Wireguard peer config. Download it to your host that has `qrencode` and `wg` installed on it.
 
-### Usage
+## Usage
 Initialize a Wireguard network with `wgtool init`. This will create a network of Wireguard peers, allocating the first available IP address to your `gateway` 128T as a hub (you can add other 128T hubs as well).
 
 For example, to initialize the network described in this README:
@@ -277,7 +279,7 @@ Available subcommands:
   delpeer  : Removes a peer from the network.
 ```
 
-### Applying Config to 128T from `wgtool`
+## Applying Config to 128T from `wgtool`
 Using the `wgtool` on your 128T, you can quickly apply updated config by redirecting output from the tool into your conf file:
 ```
 ./wgtool getpeer gateway > /var/lib/128technology/plugins/wg/server.conf && \
