@@ -248,3 +248,38 @@ To set up the remote devices, copy the conf settings to the devices. For Android
 sudo yum install qrencode
 sudo qrencode -t ansiutf8 < /var/lib/128technology/plugins/wg/my-mobile.conf
 ```
+
+## `wgtool` for Wireguard Config Gen
+Included in this repo is a `wgtool` script for creating Wireguard peer config. Download it to your host that has `qrencode` and `wg` installed on it.
+
+### Usage
+Initialize a Wireguard network with `wgtool init`. This will create a network of Wireguard peers, allocating the first available IP address to your `gateway` 128T as a hub (you can add other 128T hubs as well).
+
+For example, to initialize the network described in this README:
+```
+./wgtool init '{"network": "10.10.128.0/24", "endpoint": "128.128.128.128", "port":"12800", "networks":["172.16.128.0/24"], "dns":["1.1.1.1","8.8.8.8"]}'
+```
+
+For more, just run the tool and it will provide usage help.
+```
+Usage: wgtool <cmd> [<args>]
+
+A utility for managing a network of Wireguard peers, and generating config.
+This is a wrapper around 'qrencode' and 'wg', so make sure they are installed on the host running this tool.
+
+Available subcommands:
+  init     : Initialize the Wireguard network.
+  addspoke : Builds a new spoke peer.
+  addhub   : Builds a new hub peer.
+  getpeer  : Get Wireguard config for a peer assigned in the network.
+  getpeers : Get names and IP addresses of peers
+  getqr    : Get QR encoded Wireguard config for a peer assigned in the network.
+  delpeer  : Removes a peer from the network.
+```
+
+### Applying Config to 128T from `wgtool`
+Using the `wgtool` on your 128T, you can quickly apply updated config by redirecting output from the tool into your conf file:
+```
+./wgtool getpeer gateway > /var/lib/128technology/plugins/wg/server.conf && \
+ip netns exec wireguard wg syncconf wg0 /var/lib/128technology/plugins/wg/server.conf
+```
