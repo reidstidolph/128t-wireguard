@@ -255,12 +255,14 @@ sudo qrencode -t ansiutf8 < /var/lib/128technology/plugins/wg/my-mobile.conf
 Included in this repo is a `wgtool` script for creating Wireguard peer config. Download it to your host that has `qrencode` and `wg` installed on it.
 
 ## Usage
-Initialize a Wireguard network with `wgtool init`. This will create a network of Wireguard peers, allocating the first available IP address to your `gateway` 128T as a hub (you can add other 128T hubs as well).
+Initialize a Wireguard network with `wgtool init`. This will create a network of Wireguard peers, allocating the first available IP address to your `gateway` 128T as a hub (you can add other 128T hubs as well). It will automatically create keys and save them in `/.wgdata.json`.
 
 For example, to initialize the network described in this README:
 ```
 ./wgtool init '{"network": "10.10.128.0/24", "endpoint": "128.128.128.128", "port":"12800", "networks":["172.16.128.0/24"], "dns":["1.1.1.1","8.8.8.8"]}'
 ```
+
+View a list of your generated peers with `./wgtool getpeers`.
 
 For more, just run the tool and it will provide usage help.
 ```
