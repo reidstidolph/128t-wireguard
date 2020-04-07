@@ -97,7 +97,7 @@ var wgData
 
 const ipTools = {
   "ipRegex": /\b(?<octet1>25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])\.(?<octet2>25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])\.(?<octet3>25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])\.(?<octet4>25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\b/,
-  "prefixRegex": /\b(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])\.(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])\.(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\/([0-9]|[1-2][0-9]|3[0-2])\b/,
+  "prefixRegex": /\b(?<octet1>25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])\.(?<octet2>25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])\.(?<octet3>25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])\.(?<octet4>25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\/(?<prefix>[0-9]|[1-2][0-9]|3[0-2])\b/,
   "ipIsValid": function(ipAddr){
     return this.ipRegex.test(ipAddr)
   },
@@ -111,6 +111,48 @@ const ipTools = {
   },
   "prefixIsValid": function(prefix){
     return this.prefixRegex.test(prefix)
+  },
+  "getOctets": function(ipAddr){
+    let match = this.ipRegex(ipAddr)
+    return {
+      "octet1":match.groups.octet1,
+      "octet2":match.groups.octet2,
+      "octet3":match.groups.octet3,
+      "octet4":match.groups.octet4
+    }
+  },
+  "getNetworkInfo" function(prefix){
+    let match = this.prefixRegex(prefix)
+    let networkInfo = {
+      "octet1":match.groups.octet1,
+      "octet2":match.groups.octet2,
+      "octet3":match.groups.octet3,
+      "octet4":match.groups.octet4,
+      "networkPrefix": match.groups.prefix
+    }
+
+    networkInfo.wildcardPrefix = 32 - networkInfo.networkPrefix
+    let wildcardBoundry = Math.floor(networkInfo.networkPrefix / 8)
+
+    for (let i = 0; i < 4; i++) {
+      if (i === wildcardBoundry) {
+        // figure out mask
+        let binaryString = ""
+        for (let j = 0; j < networkInfo.wildcardPrefix % 8; j++) {
+          binaryString += "1"
+        }
+        networkInfo[`octet${i+1}Wildcard`] = parseInt(binaryString, 2)
+        networkInfo[`octet${i+1}Mask`] = 255 - networkInfo[`octet${i+1}Wildcard`]
+      } else if (i < wildcardBoundry) {
+        networkInfo[`octet${i+1}Wildcard`] = 0
+        networkInfo[`octet${i+1}Mask`] = 255
+      } else if (i > wildcardBoundry) {
+        networkInfo[`octet${i+1}Wildcard`] = 255
+        networkInfo[`octet${i+1}Mask`] = 0
+      }
+    }
+
+    return networkInfo
   },
   "getLastOctetNum": function(ipAddr){
     let match = this.ipRegex.exec(ipAddr)
@@ -128,6 +170,10 @@ const ipTools = {
       process.exit(1)
     }
   }
+}
+
+const ipPool = {
+
 }
 
 const wg = {
