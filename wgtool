@@ -29,10 +29,10 @@ Initializes the wireguard network, by creating an initial hub peer.
 Network data is saved in '.wgdata.json'.
 
 Example:
-  wgtool init '{"ip":"10.10.128.1", "endpoint":"1.1.1.1", "port":"12800", "networks": ["10.0.0.0/24","192.168.1.0/24"], "dns": ["1.1.1.1","8.8.8.8"]}'
+  wgtool init '{"network":"10.10.128.0/24", "endpoint":"1.1.1.1", "port":"12800", "networks": ["10.0.0.0/24","192.168.1.0/24"], "dns": ["1.1.1.1","8.8.8.8"]}'
 
 JSON Parameters:
-  ip       : Hub IP in Wireguard network. Added peers will increment from this address.
+  network  : Network prefix of Wireguard network. Added peers will be allocated from this network.
   endpoint : Address at which the initial hub peer will be reached by spoke peers.
   port     : Port on which the initial hub peer will listen for Wireguard packets.
   networks : Address prefixes to be routed to the initial hub peer.
@@ -93,7 +93,14 @@ Example:
   wgtool delpeer '10.10.128.2'
 `
 
-var wgData
+var wgData = {
+  network : null,
+  dns : null,
+  peers : {}
+}
+
+// populated on .wgdata file load
+var wgNetworkInfo = {}
 
 const ipTools = {
   "ipRegex": /\b(?<octet1>25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])\.(?<octet2>25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])\.(?<octet3>25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])\.(?<octet4>25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\b/,
@@ -113,67 +120,95 @@ const ipTools = {
     return this.prefixRegex.test(prefix)
   },
   "getOctets": function(ipAddr){
-    let match = this.ipRegex(ipAddr)
+    /*
+    returns object with the following keys:
+      {
+        octet1: 1,
+        octet2: 2,
+        octet3: 3,
+        octet4: 4
+      }
+    */
+    let match = this.ipRegex.exec(ipAddr)
     return {
-      "octet1":match.groups.octet1,
-      "octet2":match.groups.octet2,
-      "octet3":match.groups.octet3,
-      "octet4":match.groups.octet4
+      "octet1":parseInt(match.groups.octet1),
+      "octet2":parseInt(match.groups.octet2),
+      "octet3":parseInt(match.groups.octet3),
+      "octet4":parseInt(match.groups.octet4)
     }
   },
-  "getNetworkInfo" function(prefix){
-    let match = this.prefixRegex(prefix)
+  "getNetworkInfo": function(prefix){
+    /*
+    returns object with the following keys:
+      {
+        octet1: 1,
+        octet2: 2,
+        octet3: 3,
+        octet4: 4,
+        networkPrefix: 21,
+        wildcardPrefix: 11,
+        usableAddressCount: 2046,
+        octet1Wildcard: 0,
+        octet1Mask: 255,
+        octet1Min: 1,
+        octet1Max: 1,
+        octet2Wildcard: 0,
+        octet2Mask: 255,
+        octet2Min: 2,
+        octet2Max: 2,
+        octet3Wildcard: 7,
+        octet3Mask: 248,
+        octet3Min: 0,
+        octet3Max: 7,
+        octet4Wildcard: 255,
+        octet4Mask: 0,
+        octet4Min: 0,
+        octet4Max: 255
+      }
+    */
+    let match = this.prefixRegex.exec(prefix)
     let networkInfo = {
-      "octet1":match.groups.octet1,
-      "octet2":match.groups.octet2,
-      "octet3":match.groups.octet3,
-      "octet4":match.groups.octet4,
-      "networkPrefix": match.groups.prefix
+      "octet1":parseInt(match.groups.octet1),
+      "octet2":parseInt(match.groups.octet2),
+      "octet3":parseInt(match.groups.octet3),
+      "octet4":parseInt(match.groups.octet4),
+      "networkPrefix": parseInt(match.groups.prefix)
     }
 
     networkInfo.wildcardPrefix = 32 - networkInfo.networkPrefix
-    let wildcardBoundry = Math.floor(networkInfo.networkPrefix / 8)
+    networkInfo.usableAddressCount = Math.pow(2, networkInfo.wildcardPrefix) - 2
 
+    let wildcardNetmaskBoundry = Math.floor(networkInfo.networkPrefix / 8)
     for (let i = 0; i < 4; i++) {
-      if (i === wildcardBoundry) {
+      if (i === wildcardNetmaskBoundry) {
         // figure out mask
         let binaryString = ""
         for (let j = 0; j < networkInfo.wildcardPrefix % 8; j++) {
           binaryString += "1"
         }
-        networkInfo[`octet${i+1}Wildcard`] = parseInt(binaryString, 2)
-        networkInfo[`octet${i+1}Mask`] = 255 - networkInfo[`octet${i+1}Wildcard`]
-      } else if (i < wildcardBoundry) {
+        if (binaryString === "") {
+          networkInfo[`octet${i+1}Wildcard`] = 255
+          networkInfo[`octet${i+1}Mask`] = 0
+        } else {
+          networkInfo[`octet${i+1}Wildcard`] = parseInt(binaryString, 2)
+          networkInfo[`octet${i+1}Mask`] = 255 - networkInfo[`octet${i+1}Wildcard`]
+        }
+        networkInfo[`octet${i+1}Min`] = networkInfo[`octet${i+1}`] & networkInfo[`octet${i+1}Mask`]
+        networkInfo[`octet${i+1}Max`] = networkInfo[`octet${i+1}`] | networkInfo[`octet${i+1}Wildcard`]
+      } else if (i < wildcardNetmaskBoundry) {
         networkInfo[`octet${i+1}Wildcard`] = 0
         networkInfo[`octet${i+1}Mask`] = 255
-      } else if (i > wildcardBoundry) {
+        networkInfo[`octet${i+1}Min`] = networkInfo[`octet${i+1}`]
+        networkInfo[`octet${i+1}Max`] = networkInfo[`octet${i+1}`]
+      } else if (i > wildcardNetmaskBoundry) {
         networkInfo[`octet${i+1}Wildcard`] = 255
         networkInfo[`octet${i+1}Mask`] = 0
+        networkInfo[`octet${i+1}Min`] = 0
+        networkInfo[`octet${i+1}Max`] = 255
       }
     }
-
     return networkInfo
-  },
-  "getLastOctetNum": function(ipAddr){
-    let match = this.ipRegex.exec(ipAddr)
-    return parseInt(match.groups.octet4)
-  },
-  "getNextIp": function(){
-    let ipIndex = wgData.peerIndex
-    let match = this.ipRegex.exec(ipIndex)
-    let numberOfAssignedIps = Object.keys(wgData.peers).length
-
-    if (parseInt(match.groups.octet4)+numberOfAssignedIps < 255) {
-      return `${match.groups.octet1}.${match.groups.octet2}.${match.groups.octet3}.${parseInt(match.groups.octet4) + numberOfAssignedIps}`
-    } else {
-      console.log('out of ip addresses') // TODO: implement roll over
-      process.exit(1)
-    }
   }
-}
-
-const ipPool = {
-
 }
 
 const wg = {
@@ -259,14 +294,14 @@ async function initialize(indexPeer){
     process.exit(1)
   }
   // validate properties
-  if (!peerInput.ip || !peerInput.endpoint || !Array.isArray(peerInput.networks)) {
+  if (!peerInput.network || !peerInput.endpoint || !Array.isArray(peerInput.networks)) {
     console.log('ERROR: required properties missing.')
     console.log(initHelp)
     process.exit(1)
   }
   // validate ip
-  if (!ipTools.ipIsValid(peerInput.ip)) {
-    console.log(`ERROR: invalid ip value '${peerInput.ip}'`)
+  if (!ipTools.prefixIsValid(peerInput.network)) {
+    console.log(`ERROR: invalid network value '${peerInput.network}'`)
     console.log(initHelp)
     process.exit(1)
   }
@@ -301,13 +336,14 @@ async function initialize(indexPeer){
   })
 
   // inputs validated
-  wgData = {}
-  wgData.peerIndex = peerInput.ip
+
+  let networkInfo = ipTools.getNetworkInfo(peerInput.network)
+  wgData.network = `${networkInfo.octet1Min}.${networkInfo.octet2Min}.${networkInfo.octet3Min}.${networkInfo.octet4Min}/${networkInfo.networkPrefix}`
   wgData.dns = peerInput.dns
   wgData.peers = {}
-
+  let firstIp = `${networkInfo.octet1Min}.${networkInfo.octet2Min}.${networkInfo.octet3Min}.${networkInfo.octet4Min + 1}`
   try {
-    wgData.peers[peerInput.ip] = await genPeer("gateway", peerInput.networks, peerInput.endpoint, peerInput.port)
+    wgData.peers[firstIp] = await genPeer("gateway", peerInput.networks, peerInput.endpoint, peerInput.port)
     await writeDataFile(wgData)
     // initialized
     console.log('initialized.')
@@ -316,6 +352,32 @@ async function initialize(indexPeer){
     console.error(err)
     process.exit(1)
   }
+}
+
+function getNextIp(){
+  // iterate through peers to look for previously allocated, but now available addresses
+  for (var peerKey in wgData.peers) {
+    if (wgData.peers[peerKey] === null ) {
+      return peerKey
+      break
+    }
+  }
+  // all addresses used, allocate a new one
+  let numberOfAssignedIps = Object.keys(wgData.peers).length
+
+  // no more available, exit
+  if (numberOfAssignedIps >= wgNetworkInfo.usableAddressCount) {
+    console.log('out of ip addresses')
+    process.exit(1)
+  }
+
+  // return next available
+  let nextNum = numberOfAssignedIps + 1
+  let nextOctet1 = ( wgNetworkInfo.octet1Min | Math.floor(nextNum / 16777216))
+  let nextOctet2 = ( wgNetworkInfo.octet2Min | Math.floor(nextNum / 65536))
+  let nextOctet3 = ( wgNetworkInfo.octet3Min | Math.floor(nextNum / 256))
+  let nextOctet4 = ( wgNetworkInfo.octet4Min | nextNum % 256)
+  return `${nextOctet1}.${nextOctet2}.${nextOctet3}.${nextOctet4}`
 }
 
 /**
@@ -596,7 +658,7 @@ async function addspoke(peerInput){
 
   // input validated
 
-  let nextIp = ipTools.getNextIp()
+  let nextIp = getNextIp()
   console.log(nextIp)
   if (!peerInput.networks || !peerInput.endpoint) {
     peerInput.endpoint = null
@@ -604,7 +666,7 @@ async function addspoke(peerInput){
     peerInput.networks = [`${nextIp}/32`]
   }
   try {
-    wgData.peers[ipTools.getNextIp()] = await genPeer(peerInput.name, peerInput.networks, peerInput.endpoint, peerInput.port)
+    wgData.peers[nextIp] = await genPeer(peerInput.name, peerInput.networks, peerInput.endpoint, peerInput.port)
     await writeDataFile(wgData)
     // initialized
     console.log('added.')
@@ -661,14 +723,14 @@ async function addhub(peerInput){
 
   // input validated
 
-  let nextIp = ipTools.getNextIp()
+  let nextIp = getNextIp()
   console.log(nextIp)
   if (!peerInput.networks || !peerInput.endpoint) {
     peerInput.endpoint = null
     peerInput.networks = [`${nextIp}/32`]
   }
   try {
-    wgData.peers[ipTools.getNextIp()] = await genPeer(peerInput.name, peerInput.networks, peerInput.endpoint, peerInput.port)
+    wgData.peers[nextIp()] = await genPeer(peerInput.name, peerInput.networks, peerInput.endpoint, peerInput.port)
     await writeDataFile(wgData)
     // initialized
     console.log('added.')
@@ -684,6 +746,7 @@ async function addhub(peerInput){
 // attempt data JSON import from file
 try {
   wgData = require(dataFile)
+  wgNetworkInfo = ipTools.getNetworkInfo(wgData.network)
 } catch (err) {
   if (process.argv[2] === 'init') {
     initialize(process.argv[3])
