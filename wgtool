@@ -695,7 +695,6 @@ async function addspoke(peerInput){
   // input validated
 
   let nextIp = getNextIp()
-  console.log(nextIp)
   if (!peerInput.networks || !peerInput.endpoint) {
     peerInput.endpoint = null
     peerInput.port = null
@@ -704,13 +703,46 @@ async function addspoke(peerInput){
   try {
     wgData.peers[nextIp] = await genPeer(peerInput.name, peerInput.networks, peerInput.endpoint, peerInput.port)
     await writeDataFile(wgData)
-    // initialized
-    console.log('added.')
+    console.log(`'${nextIp}' added.`)
     process.exit(0)
   } catch (err) {
     console.error(err)
     process.exit(1)
   }
+}
+
+/**
+ * Add a new spoke peers in bulk, for test purposes
+ *
+ * @param {int} quantity - number of peers to add
+ * @return {string} wireguard config string
+ *
+*/
+async function addspokebulk(quantity){
+  if (isNaN(quantity)){
+    console.error('ERROR: expected number')
+    process.exit(1)
+  }
+
+  if (quantity > wgNetworkInfo.usableAddressCount - Object.keys(wgData.peers).length) {
+    console.error(`ERROR: bulk add ${quantity} requested, only ${wgNetworkInfo.usableAddressCount - Object.keys(wgData.peers).length} available`)
+    process.exit(1)
+  }
+
+  for (var i = 0; i < quantity; i++) {
+    let nextIp = getNextIp()
+    console.log(nextIp)
+    try {
+      wgData.peers[nextIp] = await genPeer(`spoke-${i}`, [`${nextIp}/32`], null, null)
+      console.log(`'${nextIp}' added.`)
+    } catch (err) {
+      console.error(err)
+      process.exit(1)
+    }
+  }
+
+  await writeDataFile(wgData)
+  console.log(`${quantity} bulk add complete.`)
 }
 
 /**
@@ -760,7 +792,6 @@ async function addhub(peerInput){
   // input validated
 
   let nextIp = getNextIp()
-  console.log(nextIp)
   if (!peerInput.networks || !peerInput.endpoint) {
     peerInput.endpoint = null
     peerInput.networks = [`${nextIp}/32`]
@@ -769,7 +800,7 @@ async function addhub(peerInput){
     wgData.peers[nextIp()] = await genPeer(peerInput.name, peerInput.networks, peerInput.endpoint, peerInput.port)
     await writeDataFile(wgData)
     // initialized
-    console.log('added.')
+    console.log(`'${nextIp}' added.`)
     process.exit(0)
   } catch (err) {
     console.error(err)
@@ -818,6 +849,10 @@ switch (process.argv[2]) {
 // add a spoke peer object
   case "addspoke":
     addspoke(process.argv[3])
+  break
+// add a spoke peers in bulk
+  case "addspokebulk":
+    addspokebulk(process.argv[3])
   break
 // add a hub peer object
   case "addhub":
