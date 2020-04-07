@@ -731,7 +731,6 @@ async function addspokebulk(quantity){
 
   for (var i = 0; i < quantity; i++) {
     let nextIp = getNextIp()
-    console.log(nextIp)
     try {
       wgData.peers[nextIp] = await genPeer(`spoke-${i}`, [`${nextIp}/32`], null, null)
       console.log(`'${nextIp}' added.`)
