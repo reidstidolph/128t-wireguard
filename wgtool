@@ -489,7 +489,7 @@ PrivateKey = ${peer.priv}`
     // find hub peers
     for (var key in wgData.peers) {
       let remotePeer = wgData.peers[key]
-      if (remotePeer.endpoint !== null) {
+      if (remotePeer !== null && remotePeer.endpoint !== null) {
         // got hub
         // generate allowed IPs
         let allowedIps = []
@@ -548,7 +548,7 @@ function peerLookup(peerIdentifier){
 
   function searchByName(string){
     for (var peerKey in wgData.peers) {
-      if (wgData.peers[peerKey].name === string ) {
+      if (wgData.peers[peerKey] !== null && wgData.peers[peerKey].name === string ) {
         return peerKey
         break
       }
@@ -596,11 +596,18 @@ function getPeer(peerIdentifier) {
 */
 async function delPeer(peerIdentifier) {
 
+  if (peerIdentifier === 'gateway' || peerIdentifier === `${wgNetworkInfo.octet1Min}.${wgNetworkInfo.octet2Min}.${wgNetworkInfo.octet3Min}.${wgNetworkInfo.octet4Min + 1}`) {
+    console.log('ERROR: deleting gateway peer not allowed')
+    console.log(delpeerHelp)
+    process.exit(1)
+  }
+
   let peer = peerLookup(peerIdentifier)
 
   if (peer || peer != null) {
     try {
       wgData.peers[peer] = null
+
       await writeDataFile(wgData)
       // deleted
       console.log(`deleted peer '${peer}'`)
