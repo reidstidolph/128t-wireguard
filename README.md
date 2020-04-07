@@ -282,8 +282,8 @@ Available subcommands:
 ```
 
 ## Applying Config to 128T from `wgtool`
-Using the `wgtool` on your 128T, you can quickly apply updated config by redirecting output from the tool into your conf file:
+Using the `wgtool` on your 128T, you can quickly apply updated config by redirecting output from the tool into your conf file, then synchronizing it to the Wireguard interface:
 ```
-./wgtool getpeer gateway > /var/lib/128technology/plugins/wg/server.conf && \
+./wgtool getpeer gateway > server.conf
 ip netns exec wireguard wg syncconf wg0 /var/lib/128technology/plugins/wg/server.conf
 ```
