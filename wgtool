@@ -588,6 +588,35 @@ function getPeer(peerIdentifier) {
 }
 
 /**
+ * Delete a peer config
+ *
+ * @param {string} peerIdentifier - string containing IP address of peer
+ * @return {string} wireguard config string
+ *
+*/
+async function delPeer(peerIdentifier) {
+
+  let peer = peerLookup(peerIdentifier)
+
+  if (peer || peer != null) {
+    try {
+      wgData.peers[peer] = null
+      await writeDataFile(wgData)
+      // deleted
+      console.log(`deleted peer '${peer}'`)
+      process.exit(0)
+    } catch (err) {
+      console.error(err)
+      process.exit(1)
+    }
+  } else {
+    console.log('ERROR: peer not found')
+    console.log(delpeerHelp)
+    process.exit(1)
+  }
+}
+
+/**
  * Log peers
  *
 */
@@ -786,6 +815,10 @@ switch (process.argv[2]) {
 // add a hub peer object
   case "addhub":
     addhub(process.argv[3])
+  break
+// delete a peer object
+  case "delpeer":
+    delPeer(process.argv[3])
   break
 
   default:
