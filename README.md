@@ -10,7 +10,12 @@ This walks step by step through the setup of the Wireguard peer on a 128T router
 
 ### Installation on the 128T host
 
-Wireguard offers a RPM package for CentOS, and you can attempt to install it using instructions here: https://www.wireguard.com/install/.
+Wireguard offers a RPM package for CentOS, and you can attempt to install it using `dnf` (based on instructions here: https://www.wireguard.com/install/ ).
+
+```
+sudo dnf install https://www.elrepo.org/elrepo-release-7.el7.elrepo.noarch.rpm
+sudo dnf install --enablerepo=epel --enablerepo=elrepo kmod-wireguard wireguard-tools
+```
 
 However you may run into a dependency conflict with 128T (`elfutils`). You can easily compile it from source using some slight modifications of this procedure: https://www.wireguard.com/compilation/
 
